@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Routes, REST, StringSelectMenuBuilder } from "discord.js"
+import { Client, GatewayIntentBits, Partials, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Routes, REST, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from "discord.js"
 import dotenv from "dotenv"
 import fs from "fs"
 dotenv.config()
@@ -17,15 +17,16 @@ const CATEGORY_RESET_HWID_ID = env("CATEGORY_RESET_HWID_ID")
 const LOG_CHANNEL_ID = env("LOG_CHANNEL_ID")
 const PANEL_POST_CHANNEL_ID = "1437589467379663048"
 
-const EMOJI_SUPORTE_ID = env("EMOJI_SUPORTE_ID")
-const EMOJI_COMPRA_ID = env("EMOJI_COMPRA_ID")
-const EMOJI_CREATOR_ID = env("EMOJI_CREATOR_ID")
-const EMOJI_RESET_ID = env("EMOJI_RESET_ID")
-const EMOJI_LOCK_ID = env("EMOJI_LOCK_ID")
+const getEmojiVar = (...keys) => keys.map(env).find(Boolean) || ""
+const EMOJI_SUPORTE_RAW = getEmojiVar("EMOJI_SUPORTE","EMOJI_SUPORTE_ID")
+const EMOJI_COMPRA_RAW = getEmojiVar("EMOJI_COMPRA","EMOJI_COMPRA_ID")
+const EMOJI_CREATOR_RAW = getEmojiVar("EMOJI_CREATOR","EMOJI_CREATOR_ID")
+const EMOJI_RESET_RAW = getEmojiVar("EMOJI_RESET","EMOJI_RESET_ID")
+const EMOJI_LOCK_RAW = getEmojiVar("EMOJI_LOCK","EMOJI_LOCK_ID")
 
 const cfgPath = "./config.json"
 const defaultCfg = {
-  panel: { title: "LUZENX SYSTEM", description: "Estamos aqui para ajudar você da melhor forma possível.\nAbra um novo ticket para registrar sua solicitação, dúvida, compras ou problema — nossa equipe entrará em contato o mais breve possível.", image: DEFAULT_PANEL_IMAGE, color: 0xffffff },
+  panel: { title: "Rage System", description: "Estamos aqui para ajudar você da melhor forma possível. Abra um novo ticket para registrar sua solicitação, dúvida, compras ou problema — nossa equipe entrará em contato o mais breve possível.", image: DEFAULT_PANEL_IMAGE, color: 0xffffff },
   ticket: { titlePrefix: "Ticket • ", description: "aguarde um atendente. Use o botão abaixo para fechar quando resolver.", image: null, color: 0xffffff }
 }
 let config = defaultCfg
@@ -36,19 +37,28 @@ const saveCfg = () => { try { fs.writeFileSync(cfgPath, JSON.stringify(config, n
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers], partials: [Partials.Channel] })
 
-const emojiObj = (id, fallback) => id ? { id } : fallback
+const parseEmoji = (v, fallback) => {
+  if (!v) return fallback
+  const s = v.trim()
+  const m = s.match(/^<a?:\w+:(\d{17,20})>$/)
+  if (m) return { id: m[1] }
+  if (/^\d{17,20}$/.test(s)) return { id: s }
+  return s
+}
 
 const kinds = [
-  { key: "suporte", label: "Suporte", desc: "Ajuda ou dúvidas gerais", emoji: emojiObj(EMOJI_SUPORTE_ID, "🛠️"), cat: () => CATEGORY_SUPORTE_ID || TICKETS_CATEGORY_ID || null },
-  { key: "compra", label: "Compra", desc: "Compra, dúvida e suporte de produtos", emoji: emojiObj(EMOJI_COMPRA_ID, "🛒"), cat: () => CATEGORY_COMPRA_ID || TICKETS_CATEGORY_ID || null },
-  { key: "creator", label: "Content Creator", desc: "Torne-se um Content Creator da Rage", emoji: emojiObj(EMOJI_CREATOR_ID, "🎬"), cat: () => CATEGORY_CREATOR_ID || TICKETS_CATEGORY_ID || null },
-  { key: "resethwid", label: "Reset HWID", desc: "Redefina o HWID do seu produto.", emoji: emojiObj(EMOJI_RESET_ID, "♻️"), cat: () => CATEGORY_RESET_HWID_ID || TICKETS_CATEGORY_ID || null }
+  { key: "suporte", label: "Suporte", desc: "Ajuda ou dúvidas gerais", emoji: parseEmoji(EMOJI_SUPORTE_RAW, "🛠️"), cat: () => CATEGORY_SUPORTE_ID || TICKETS_CATEGORY_ID || null },
+  { key: "compra", label: "Compra", desc: "Compra, dúvida e suporte de produtos", emoji: parseEmoji(EMOJI_COMPRA_RAW, "🛒"), cat: () => CATEGORY_COMPRA_ID || TICKETS_CATEGORY_ID || null },
+  { key: "creator", label: "Content Creator", desc: "Torne-se um Content Creator da Rage", emoji: parseEmoji(EMOJI_CREATOR_RAW, "🎬"), cat: () => CATEGORY_CREATOR_ID || TICKETS_CATEGORY_ID || null },
+  { key: "resethwid", label: "Reset HWID", desc: "Redefina o HWID do seu produto.", emoji: parseEmoji(EMOJI_RESET_RAW, "♻️"), cat: () => CATEGORY_RESET_HWID_ID || TICKETS_CATEGORY_ID || null }
 ]
 
 const makePanel = () => {
   const embed = new EmbedBuilder().setTitle(config.panel.title).setDescription(config.panel.description).setColor(config.panel.color)
   if (config.panel.image) embed.setImage(config.panel.image)
-  const menu = new StringSelectMenuBuilder().setCustomId("ticket_select").setPlaceholder("Escolha uma categoria de ticket").addOptions(...kinds.map(k => ({ label: k.label, value: k.key, description: k.desc, emoji: k.emoji })))
+  const menu = new StringSelectMenuBuilder().setCustomId("ticket_select").setPlaceholder("Escolha uma categoria de ticket")
+  const options = kinds.map(k => new StringSelectMenuOptionBuilder().setLabel(k.label).setValue(k.key).setDescription(k.desc).setEmoji(k.emoji))
+  menu.addOptions(options)
   const row = new ActionRowBuilder().addComponents(menu)
   return { embed, row }
 }
@@ -77,12 +87,12 @@ const resolveCategory = async (guild, id) => {
   return { parent: ch, reason: "ok" }
 }
 
-const isAdmin = async (interaction) => {
+const isAdmin = async interaction => {
   const member = await interaction.guild.members.fetch(interaction.user.id)
   return member.permissions.has(PermissionsBitField.Flags.Administrator) || (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID))
 }
 
-const parseColor = (v) => {
+const parseColor = v => {
   if (typeof v !== "string") return null
   const s = v.trim().replace(/^#/, "")
   if (!/^[0-9a-fA-F]{6}$/.test(s)) return null
@@ -184,7 +194,7 @@ client.on("interactionCreate", async interaction => {
         await log(interaction.guild, `mover resultado=${moved} channel.parent=${channel.parentId}`)
       }
       const openEmbed = makeTicketEmbed(interaction.user.id, kind.label)
-      const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("ticket_close").setLabel("Fechar").setEmoji(emojiObj(EMOJI_LOCK_ID, "🔒")).setStyle(ButtonStyle.Secondary))
+      const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("ticket_close").setLabel("Fechar").setEmoji(parseEmoji(EMOJI_LOCK_RAW, "🔒")).setStyle(ButtonStyle.Secondary))
       const pingAdmins = ADMIN_ROLE_ID ? `<@&${ADMIN_ROLE_ID}>` : ""
       await channel.send({ content: pingAdmins, embeds: [openEmbed], components: [closeRow] })
       return await interaction.reply({ content: `Ticket criado: ${channel}`, ephemeral: true })
