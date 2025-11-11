@@ -15,14 +15,15 @@ const CATEGORY_COMPRA_ID = env("CATEGORY_COMPRA_ID")
 const CATEGORY_CREATOR_ID = env("CATEGORY_CREATOR_ID")
 const CATEGORY_RESET_HWID_ID = env("CATEGORY_RESET_HWID_ID")
 const LOG_CHANNEL_ID = env("LOG_CHANNEL_ID")
+const AUTO_POST_PANEL = env("AUTO_POST_PANEL") === "true"
 const PANEL_POST_CHANNEL_ID = "1437589467379663048"
 
 const getEmojiVar = (...keys) => keys.map(env).find(Boolean) || ""
 const EMOJI_SUPORTE_RAW = getEmojiVar("EMOJI_SUPORTE","EMOJI_SUPORTE_ID")
-const EMOJI_COMPRA_RAW = getEmojiVar("EMOJI_COMPRA","EMOJI_COMPRA_ID")
+const EMOJI_COMPRA_RAW  = getEmojiVar("EMOJI_COMPRA","EMOJI_COMPRA_ID")
 const EMOJI_CREATOR_RAW = getEmojiVar("EMOJI_CREATOR","EMOJI_CREATOR_ID")
-const EMOJI_RESET_RAW = getEmojiVar("EMOJI_RESET","EMOJI_RESET_ID")
-const EMOJI_LOCK_RAW = getEmojiVar("EMOJI_LOCK","EMOJI_LOCK_ID")
+const EMOJI_RESET_RAW   = getEmojiVar("EMOJI_RESET","EMOJI_RESET_ID")
+const EMOJI_LOCK_RAW    = getEmojiVar("EMOJI_LOCK","EMOJI_LOCK_ID")
 
 const cfgPath = "./config.json"
 const defaultCfg = {
@@ -47,10 +48,10 @@ const parseEmoji = (v, fallback) => {
 }
 
 const kinds = [
-  { key: "suporte", label: "Suporte", desc: "Ajuda ou dúvidas gerais", emoji: parseEmoji(EMOJI_SUPORTE_RAW, "🛠️"), cat: () => CATEGORY_SUPORTE_ID || TICKETS_CATEGORY_ID || null },
-  { key: "compra", label: "Compra", desc: "Compra, dúvida e suporte de produtos", emoji: parseEmoji(EMOJI_COMPRA_RAW, "🛒"), cat: () => CATEGORY_COMPRA_ID || TICKETS_CATEGORY_ID || null },
-  { key: "creator", label: "Content Creator", desc: "Torne-se um Content Creator da Rage", emoji: parseEmoji(EMOJI_CREATOR_RAW, "🎬"), cat: () => CATEGORY_CREATOR_ID || TICKETS_CATEGORY_ID || null },
-  { key: "resethwid", label: "Reset HWID", desc: "Redefina o HWID do seu produto.", emoji: parseEmoji(EMOJI_RESET_RAW, "♻️"), cat: () => CATEGORY_RESET_HWID_ID || TICKETS_CATEGORY_ID || null }
+  { key: "suporte",   label: "Suporte",         desc: "Ajuda ou dúvidas gerais",                 emoji: parseEmoji(EMOJI_SUPORTE_RAW, "🛠️"), cat: () => CATEGORY_SUPORTE_ID   || TICKETS_CATEGORY_ID || null },
+  { key: "compra",    label: "Compra",          desc: "Compra, dúvida e suporte de produtos",    emoji: parseEmoji(EMOJI_COMPRA_RAW,  "🛒"), cat: () => CATEGORY_COMPRA_ID    || TICKETS_CATEGORY_ID || null },
+  { key: "creator",   label: "Content Creator", desc: "Torne-se um Content Creator da Rage",     emoji: parseEmoji(EMOJI_CREATOR_RAW, "🎬"), cat: () => CATEGORY_CREATOR_ID   || TICKETS_CATEGORY_ID || null },
+  { key: "resethwid", label: "Reset HWID",      desc: "Redefina o HWID do seu produto.",         emoji: parseEmoji(EMOJI_RESET_RAW,   "♻️"), cat: () => CATEGORY_RESET_HWID_ID || TICKETS_CATEGORY_ID || null }
 ]
 
 const makePanel = () => {
@@ -101,6 +102,7 @@ const parseColor = v => {
 
 client.once("ready", async () => {
   const rest = new REST({ version: "10" }).setToken(TOKEN)
+
   const commands = [
     { name: "ticketsetup", description: "Enviar o painel de tickets neste canal" },
     { name: "panelset", description: "Definir embed do painel", options: [{ name: "field", description: "Campo", type: 3, required: true, choices: [{ name: "title", value: "title" }, { name: "description", value: "description" }, { name: "image", value: "image" }, { name: "color", value: "color" }] }, { name: "value", description: "Valor", type: 3, required: true }] },
@@ -109,15 +111,31 @@ client.once("ready", async () => {
     { name: "ticketshow", description: "Pré-visualizar embed do ticket" },
     { name: "panelpost", description: "Publicar o painel no canal configurado" }
   ]
-  for (const gid of [...client.guilds.cache.keys()]) await rest.put(Routes.applicationGuildCommands(CLIENT_ID, gid), { body: commands })
-  if (PANEL_CHANNEL_ID) {
-    const ch = await client.channels.fetch(PANEL_CHANNEL_ID).catch(() => null)
-    if (ch) {
-      const { embed, row } = makePanel()
-      await ch.send({ embeds: [embed], components: [row] }).catch(() => {})
+
+  for (const gid of [...client.guilds.cache.keys()]) {
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, gid), { body: commands })
+  }
+
+  console.log(`on ${client.user.tag}`)
+
+  if (AUTO_POST_PANEL) {
+    try {
+      if (!PANEL_CHANNEL_ID) {
+        console.warn("[tickets] AUTO_POST_PANEL=true mas PANEL_CHANNEL_ID está vazio.")
+      } else {
+        const ch = await client.channels.fetch(PANEL_CHANNEL_ID)
+        if (!ch?.isTextBased?.()) {
+          console.warn(`[tickets] Canal ${PANEL_CHANNEL_ID} não é de texto ou não acessível.`)
+        } else {
+          const { embed, row } = makePanel()
+          await ch.send({ embeds: [embed], components: [row] })
+          console.log(`[tickets] Painel auto postado em #${ch.name} (${PANEL_CHANNEL_ID})`)
+        }
+      }
+    } catch (err) {
+      console.error("[tickets] Falha no AUTO_POST_PANEL:", err)
     }
   }
-  console.log(`on ${client.user.tag}`)
 })
 
 client.on("interactionCreate", async interaction => {
@@ -214,4 +232,8 @@ client.on("interactionCreate", async interaction => {
   }
 })
 
+process.on("unhandledRejection", (r) => { console.error("[unhandledRejection]", r) })
+process.on("uncaughtException",  (e) => { console.error("[uncaughtException]", e) })
+
+if (!TOKEN) { console.error("TOKEN ausente no .env"); process.exit(1) }
 client.login(TOKEN)
