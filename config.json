@@ -2,13 +2,13 @@
   "panel": {
     "title": "Rage System",
     "description": "Estamos aqui para ajudar você da melhor forma possível. Abra um novo ticket para registrar sua solicitação, dúvida, compras ou problema — nossa equipe entrará em contato o mais breve possível.",
-    "image": "https://i.imgur.com/K7S8qeV.jpeg",
+    "image": "https://i.imgur.com/2ipaqFv.png",
     "color": 16777215
   },
   "ticket": {
     "titlePrefix": "Ticket • ",
     "description": "aguarde um atendente. Use o botão abaixo para fechar quando resolver.",
-    "image": null,
+    "image": "",
     "color": 16777215
   }
 }
