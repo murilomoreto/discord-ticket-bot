@@ -14,6 +14,9 @@ const CATEGORY_DOACOES_ID = env("CATEGORY_DOACOES_ID")
 const CATEGORY_APELACAO_ID = env("CATEGORY_APELACAO_ID")
 const LOG_CHANNEL_ID = env("LOG_CHANNEL_ID")
 
+const EMBED_COLOR = 0xffffff
+
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers], partials: [Partials.Channel] })
 
 const kinds = [
@@ -23,8 +26,12 @@ const kinds = [
 ]
 
 const makePanel = () => {
-  const embed = new EmbedBuilder().setTitle("Atendimento").setDescription("Escolha abaixo o motivo para abrir seu ticket.").setImage(PANEL_IMAGE_URL).setColor(0x2b2d31)
+  const embed = new EmbedBuilder().setTitle("Atendimento").setDescription("Escolha abaixo o motivo para abrir seu ticket.").setImage(PANEL_IMAGE_URL) .setTitle("Atendimento")
+  .setDescription("Escolha abaixo o motivo para abrir seu ticket.")
+  .setImage(PANEL_IMAGE_URL)
+  .setColor(EMBED_COLOR)
   const row = new ActionRowBuilder().addComponents(...kinds.map(k => new ButtonBuilder().setCustomId(`open_${k.key}`).setLabel(k.label).setEmoji(k.emoji).setStyle(ButtonStyle.Primary)))
+  
   return { embed, row }
 }
 
@@ -114,7 +121,10 @@ client.on("interactionCreate", async interaction => {
       await log(interaction.guild, `mover resultado=${moved} channel.parent=${channel.parentId}`)
     }
 
-    const openEmbed = new EmbedBuilder().setTitle(`Ticket • ${kind.label}`).setDescription(`<@${interaction.user.id}> aguarde um atendente. Use o botão abaixo para fechar quando resolver.`).setColor(0x2b2d31)
+const openEmbed = new EmbedBuilder()
+  .setTitle(`Ticket • ${kind.label}`)
+  .setDescription(`<@${interaction.user.id}> aguarde um atendente. Use o botão abaixo para fechar quando resolver.`)
+  .setColor(EMBED_COLOR)
     const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("ticket_close").setLabel("Fechar").setEmoji("🔒").setStyle(ButtonStyle.Danger))
     const pingAdmins = ADMIN_ROLE_ID ? `<@&${ADMIN_ROLE_ID}>` : ""
     await channel.send({ content: pingAdmins, embeds: [openEmbed], components: [closeRow] })
