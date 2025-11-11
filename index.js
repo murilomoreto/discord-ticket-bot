@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Routes, REST } from "discord.js"
+import { Client, GatewayIntentBits, Partials, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Routes, REST, StringSelectMenuBuilder } from "discord.js"
 import dotenv from "dotenv"
 import fs from "fs"
 dotenv.config()
@@ -10,15 +10,22 @@ const ADMIN_ROLE_ID = env("ADMIN_ROLE_ID")
 const DEFAULT_PANEL_IMAGE = env("PANEL_IMAGE_URL") || "https://i.imgur.com/2nL4D94.png"
 const PANEL_CHANNEL_ID = env("PANEL_CHANNEL_ID")
 const TICKETS_CATEGORY_ID = env("TICKETS_CATEGORY_ID")
-const CATEGORY_SUPPORT_ID = env("CATEGORY_SUPPORT_ID")
-const CATEGORY_DOACOES_ID = env("CATEGORY_DOACOES_ID")
-const CATEGORY_APELACAO_ID = env("CATEGORY_APELACAO_ID")
+const CATEGORY_SUPORTE_ID = env("CATEGORY_SUPORTE_ID")
+const CATEGORY_COMPRA_ID = env("CATEGORY_COMPRA_ID")
+const CATEGORY_CREATOR_ID = env("CATEGORY_CREATOR_ID")
+const CATEGORY_RESET_HWID_ID = env("CATEGORY_RESET_HWID_ID")
 const LOG_CHANNEL_ID = env("LOG_CHANNEL_ID")
 const PANEL_POST_CHANNEL_ID = "1437589467379663048"
 
+const EMOJI_SUPORTE_ID = env("EMOJI_SUPORTE_ID")
+const EMOJI_COMPRA_ID = env("EMOJI_COMPRA_ID")
+const EMOJI_CREATOR_ID = env("EMOJI_CREATOR_ID")
+const EMOJI_RESET_ID = env("EMOJI_RESET_ID")
+const EMOJI_LOCK_ID = env("EMOJI_LOCK_ID")
+
 const cfgPath = "./config.json"
 const defaultCfg = {
-  panel: { title: "Rage System", description: "Estamos aqui para ajudar você da melhor forma possível. Abra um novo ticket para registrar sua solicitação, dúvida, compras ou problema — nossa equipe entrará em contato o mais breve possível.", image: DEFAULT_PANEL_IMAGE, color: 0xffffff },
+  panel: { title: "LUZENX SYSTEM", description: "Estamos aqui para ajudar você da melhor forma possível.\nAbra um novo ticket para registrar sua solicitação, dúvida, compras ou problema — nossa equipe entrará em contato o mais breve possível.", image: DEFAULT_PANEL_IMAGE, color: 0xffffff },
   ticket: { titlePrefix: "Ticket • ", description: "aguarde um atendente. Use o botão abaixo para fechar quando resolver.", image: null, color: 0xffffff }
 }
 let config = defaultCfg
@@ -29,16 +36,20 @@ const saveCfg = () => { try { fs.writeFileSync(cfgPath, JSON.stringify(config, n
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers], partials: [Partials.Channel] })
 
+const emojiObj = (id, fallback) => id ? { id } : fallback
+
 const kinds = [
-  { key: "support", label: "Suporte", emoji: "🛠️", cat: () => CATEGORY_SUPPORT_ID || TICKETS_CATEGORY_ID || null },
-  { key: "doacoes", label: "Doações", emoji: "💸", cat: () => CATEGORY_DOACOES_ID || TICKETS_CATEGORY_ID || null },
-  { key: "apelacao", label: "Apelação", emoji: "⚖️", cat: () => CATEGORY_APELACAO_ID || TICKETS_CATEGORY_ID || null }
+  { key: "suporte", label: "Suporte", desc: "Ajuda ou dúvidas gerais", emoji: emojiObj(EMOJI_SUPORTE_ID, "🛠️"), cat: () => CATEGORY_SUPORTE_ID || TICKETS_CATEGORY_ID || null },
+  { key: "compra", label: "Compra", desc: "Compra, dúvida e suporte de produtos", emoji: emojiObj(EMOJI_COMPRA_ID, "🛒"), cat: () => CATEGORY_COMPRA_ID || TICKETS_CATEGORY_ID || null },
+  { key: "creator", label: "Content Creator", desc: "Torne-se um Content Creator da Rage", emoji: emojiObj(EMOJI_CREATOR_ID, "🎬"), cat: () => CATEGORY_CREATOR_ID || TICKETS_CATEGORY_ID || null },
+  { key: "resethwid", label: "Reset HWID", desc: "Redefina o HWID do seu produto.", emoji: emojiObj(EMOJI_RESET_ID, "♻️"), cat: () => CATEGORY_RESET_HWID_ID || TICKETS_CATEGORY_ID || null }
 ]
 
 const makePanel = () => {
   const embed = new EmbedBuilder().setTitle(config.panel.title).setDescription(config.panel.description).setColor(config.panel.color)
   if (config.panel.image) embed.setImage(config.panel.image)
-  const row = new ActionRowBuilder().addComponents(...kinds.map(k => new ButtonBuilder().setCustomId(`open_${k.key}`).setLabel(k.label).setEmoji(k.emoji).setStyle(ButtonStyle.Secondary)))
+  const menu = new StringSelectMenuBuilder().setCustomId("ticket_select").setPlaceholder("Escolha uma categoria de ticket").addOptions(...kinds.map(k => ({ label: k.label, value: k.key, description: k.desc, emoji: k.emoji })))
+  const row = new ActionRowBuilder().addComponents(menu)
   return { embed, row }
 }
 
@@ -145,59 +156,48 @@ client.on("interactionCreate", async interaction => {
         const ch = await interaction.guild.channels.fetch(PANEL_POST_CHANNEL_ID).catch(() => null)
         if (!ch) return await interaction.reply({ content: "Canal alvo não encontrado.", ephemeral: true })
         const { embed, row } = makePanel()
-        await ch.send({ embeds: [embed], components: [row] }).catch(() => {})
+        await ch.send({ embeds: [embed], components: [row] })
         return await interaction.reply({ content: `Painel publicado em <#${PANEL_POST_CHANNEL_ID}>.`, ephemeral: true })
       }
     }
 
-    if (!interaction.isButton()) return
-    if (!interaction.customId.startsWith("open_")) return
-
-    const key = interaction.customId.replace("open_", "")
-    const kind = kinds.find(k => k.key === key)
-    if (!kind) return
-
-    const existing = interaction.guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.topic === interaction.user.id)
-    if (existing) return await interaction.reply({ content: `Você já tem um ticket aberto: ${existing}`, ephemeral: true })
-
-    const wantParentId = kind.cat()
-    const { parent, reason } = await resolveCategory(interaction.guild, wantParentId)
-    await log(interaction.guild, `abrir ticket key=${key} user=${interaction.user.id} wantParent=${wantParentId} resolved=${parent?.id || "null"} reason=${reason}`)
-
-    const name = `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}-${Math.floor(Math.random() * 1000)}`
-    const overwrites = [
-      { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-      { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageChannels] }
-    ]
-    if (ADMIN_ROLE_ID) overwrites.push({ id: ADMIN_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageChannels] })
-
-    let channel = await interaction.guild.channels.create({
-      name,
-      type: ChannelType.GuildText,
-      parent: parent?.id ?? null,
-      topic: interaction.user.id,
-      permissionOverwrites: overwrites
-    }).catch(async err => {
-      await log(interaction.guild, `falha create parent=${parent?.id || "null"} code=${err?.code || "?"} msg=${err?.message || "?"}`)
-      return null
-    })
-
-    if (!channel) return await interaction.reply({ content: "Falha ao criar o canal do ticket. Veja os logs.", ephemeral: true })
-
-    if (parent && channel.parentId !== parent.id) {
-      const moved = await channel.setParent(parent.id).then(() => true).catch(async err => {
-        await log(interaction.guild, `falha mover channel=${channel.id} para parent=${parent.id} code=${err?.code || "?"}`)
-        return false
-      })
-      await log(interaction.guild, `mover resultado=${moved} channel.parent=${channel.parentId}`)
+    if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select") {
+      const key = interaction.values[0]
+      const kind = kinds.find(k => k.key === key)
+      if (!kind) return
+      const existing = interaction.guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.topic === interaction.user.id)
+      if (existing) return await interaction.reply({ content: `Você já tem um ticket aberto: ${existing}`, ephemeral: true })
+      const wantParentId = kind.cat()
+      const { parent, reason } = await resolveCategory(interaction.guild, wantParentId)
+      await log(interaction.guild, `abrir ticket key=${key} user=${interaction.user.id} wantParent=${wantParentId} resolved=${parent?.id || "null"} reason=${reason}`)
+      const name = `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}-${Math.floor(Math.random() * 1000)}`
+      const overwrites = [
+        { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+        { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageChannels] }
+      ]
+      if (ADMIN_ROLE_ID) overwrites.push({ id: ADMIN_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageChannels] })
+      let channel = await interaction.guild.channels.create({ name, type: ChannelType.GuildText, parent: parent?.id ?? null, topic: interaction.user.id, permissionOverwrites: overwrites }).catch(async err => { await log(interaction.guild, `falha create parent=${parent?.id || "null"} code=${err?.code || "?"} msg=${err?.message || "?"}`); return null })
+      if (!channel) return await interaction.reply({ content: "Falha ao criar o canal do ticket. Veja os logs.", ephemeral: true })
+      if (parent && channel.parentId !== parent.id) {
+        const moved = await channel.setParent(parent.id).then(() => true).catch(async err => { await log(interaction.guild, `falha mover channel=${channel.id} para parent=${parent.id} code=${err?.code || "?"}`); return false })
+        await log(interaction.guild, `mover resultado=${moved} channel.parent=${channel.parentId}`)
+      }
+      const openEmbed = makeTicketEmbed(interaction.user.id, kind.label)
+      const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("ticket_close").setLabel("Fechar").setEmoji(emojiObj(EMOJI_LOCK_ID, "🔒")).setStyle(ButtonStyle.Secondary))
+      const pingAdmins = ADMIN_ROLE_ID ? `<@&${ADMIN_ROLE_ID}>` : ""
+      await channel.send({ content: pingAdmins, embeds: [openEmbed], components: [closeRow] })
+      return await interaction.reply({ content: `Ticket criado: ${channel}`, ephemeral: true })
     }
 
-    const openEmbed = makeTicketEmbed(interaction.user.id, kind.label)
-    const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("ticket_close").setLabel("Fechar").setEmoji("🔒").setStyle(ButtonStyle.Secondary))
-    const pingAdmins = ADMIN_ROLE_ID ? `<@&${ADMIN_ROLE_ID}>` : ""
-    await channel.send({ content: pingAdmins, embeds: [openEmbed], components: [closeRow] })
-    await interaction.reply({ content: `Ticket criado: ${channel}`, ephemeral: true })
+    if (interaction.isButton() && interaction.customId === "ticket_close") {
+      const member = await interaction.guild.members.fetch(interaction.user.id)
+      const isAdm = member.permissions.has(PermissionsBitField.Flags.Administrator) || (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID))
+      const topicUserId = interaction.channel.topic
+      if (!isAdm && interaction.user.id !== topicUserId) return await interaction.reply({ content: "Apenas o autor do ticket ou um administrador pode fechar.", ephemeral: true })
+      await interaction.reply({ content: "Fechando o ticket..." })
+      await interaction.channel.delete().catch(async () => await interaction.followUp({ content: "Não foi possível excluir o canal. Verifique as permissões.", ephemeral: true }))
+    }
   } catch (e) {
     try { await interaction.reply({ content: "Erro inesperado.", ephemeral: true }) } catch {}
     try { if (interaction.guild) await log(interaction.guild, `erro: ${e?.message || e}`) } catch {}
