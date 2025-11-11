@@ -23,3 +23,9 @@ Commands:
 /ticketset - change stuffs on private panel
 /ticketsetup - send the public panel on current channel ure typing
 /ticketshow - show a preview of private panel
+
+How to use:
+
+-Install Node.js
+-Open cmd and type "cd" and paste folder path then "npm i"
+-Set up .env
