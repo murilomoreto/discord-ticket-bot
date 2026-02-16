@@ -1,8 +1,8 @@
 Ticket bot for Discord made by me
 
 Features:
--.env (managing bot, ids, image and emojis)
--Open ticket
+    -.env (managing bot, ids, image and emojis)
+    -Open ticket
 -Close ticket
 -Reopen ticket
 -Delete ticket
